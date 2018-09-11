@@ -6,18 +6,13 @@ from nav_msgs.msg import Odometry
 import numpy as np
 from tf_conversions import posemath as pm
 from geometry_msgs.msg import Pose, Pose2D, Twist
-
-def anorm(x):
-    return (x+np.pi) % (2*np.pi) - np.pi
-
-def adiff(a,b):
-    return anorm(a-b)
+from warmup_project.utils import anorm, adiff
 
 class SquareDriver(object):
     def __init__(self):
         # receive ROS parameters
         self.rate_ = rospy.get_param('~rate', 50.0)
-        self.tf_mode_ = rospy.get_param('~tf_mode_', False)
+        self.use_tf_ = rospy.get_param('~use_tf', False)
         self.gtol_ = rospy.get_param('~gtol', 5e-2) # goal tolerance
         self.atol_ = rospy.get_param('~atol', np.deg2rad(10)) # waypoint angle tolerance
 
@@ -25,12 +20,12 @@ class SquareDriver(object):
         rospy.loginfo('loop rate : {}'.format(self.rate_))
         rospy.loginfo('goal tolerance : {}'.format(self.gtol_))
         rospy.loginfo('control loop angular tolerance : {}'.format(self.atol_))
-        rospy.loginfo('tf mode : {}'.format(self.tf_mode_))
+        rospy.loginfo('use tf for odometry : {}'.format(self.use_tf_))
 
-        self._pose = None
+        self.pose_ = None
 
         # create ROS handle
-        if self.tf_mode_:
+        if self.use_tf_:
             self.tfl_ = tf.TransformListener()
         else:
             self.odom_sub_ = rospy.Subscriber('odom', Odometry, self.odom_cb)
