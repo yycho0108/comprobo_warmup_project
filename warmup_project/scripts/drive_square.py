@@ -83,8 +83,9 @@ class SquareDriver(object):
                     pass
             else:
                 # has origin
+                ox, oy = self.origin_.x, self.origin_.y
                 gx, gy = self.target_[self.phase_]
-                dx, dy = gx-self.pose_.x, gy-self.pose_.y
+                dx, dy = (gx+ox)-self.pose_.x, (gy+oy)-self.pose_.y
                 theta = np.arctan2(dy, dx)
 
                 if np.linalg.norm([dx,dy]) < self.gtol_:
