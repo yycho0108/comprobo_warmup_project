@@ -1,4 +1,4 @@
-import numpy
+import numpy as np
 
 class PID(object):
     """ Simple PID controller """

@@ -68,7 +68,7 @@ class SquareDriver(object):
         while not rospy.is_shutdown():
             if (self.origin_ is None):
                 # need to initialize origin
-                if self.tf_mode_:
+                if self.use_tf_:
                     pose = self.get_odom()
                     if pose is not None:
                         self.pose_   = Pose2D(x=pose.x,y=pose.y,theta=pose.theta)
@@ -86,9 +86,9 @@ class SquareDriver(object):
                 if np.linalg.norm([dx,dy]) < self.gtol_:
                     # reached goal!
                     next_phase = (self.phase_ + 1) % self.n_phase_
-                    rospy.loginfo('Reached Goal! {} -> {}',
-                            self.phase_name_[self.phase_],
-                            self.phase_name_[next_phase])
+                    rospy.loginfo('Reached Goal! {} -> {}'.format(
+                        self.phase_name_[self.phase_],
+                        self.phase_name_[next_phase]))
                     self.phase_ = next_phase
                 else:
                     d_theta = adiff(theta, self.pose_.theta)
