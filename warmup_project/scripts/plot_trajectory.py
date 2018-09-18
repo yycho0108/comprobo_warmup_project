@@ -23,11 +23,12 @@ def xq2p(x,q):
 class TrajectoryPublisher(object):
     def __init__(self):
         rospy.init_node('plot_trajectory')
-        self._frame = rospy.get_param('~frame_id', 'map')
+        self._src_frame = rospy.get_param('~source', 'map')
+        self._dst_frame = rospy.get_param('~target', 'base_link')
 
         self._path = Path()
-        self._path.header = Header(frame_id=self._frame, stamp=rospy.Time.now())
-        self._path.header.frame_id = self._frame
+        self._path.header = Header(frame_id=self._src_frame, stamp=rospy.Time.now())
+        self._path.header.frame_id = self._src_frame
         self._path.header.stamp = rospy.Time.now()
 
         self._tfl = tf.TransformListener()
@@ -41,9 +42,9 @@ class TrajectoryPublisher(object):
         rate = rospy.Rate(50)
         while not rospy.is_shutdown():
             try:
-                x, q = self._tfl.lookupTransform(self._frame, 'base_link', rospy.Time(0))
+                x, q = self._tfl.lookupTransform(self._src_frame, self._dst_frame, rospy.Time(0))
                 self._path.poses.append(PoseStamped(
-                    header=Header(frame_id=self._frame, stamp=rospy.Time.now()),
+                    header=Header(frame_id=self._src_frame, stamp=rospy.Time.now()),
                     pose=xq2p(x,q)))
                 self._pub.publish(self._path)
             except Exception as e:
