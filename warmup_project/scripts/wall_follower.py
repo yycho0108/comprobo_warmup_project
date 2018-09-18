@@ -29,7 +29,7 @@ class WallFollower(object):
 
         # pid parameters
         kp = rospy.get_param('~kp', 0.5)
-        ki = rospy.get_param('~ki', 0.001)
+        ki = rospy.get_param('~ki', 0.05)
         kd = rospy.get_param('~kd', 0.0)
         max_u = rospy.get_param('~max_u', 0.4)
         max_i = rospy.get_param('~max_i', 0.1)
@@ -48,7 +48,7 @@ class WallFollower(object):
         # ros handles
         self.tfl_ = tf.TransformListener()
         self.cmd_pub_ = rospy.Publisher('cmd_vel', Twist, queue_size=5)
-        self.scan_sub_ = rospy.Subscriber('stable_scan', LaserScan, self.scan_cb)
+        self.scan_sub_ = rospy.Subscriber('scan', LaserScan, self.scan_cb)
         self.viz_pub_ = rospy.Publisher('viz_pt', Marker, queue_size=2)
 
     def footprint(self):
@@ -124,7 +124,7 @@ class WallFollower(object):
         if len(valid) > 0:
             v_idx = np.where(sel)[0]
             didx = v_idx[np.argmin(valid)]
-            dmin = np.min( np.abs(valid * np.sin(angle[sel])))
+            dmin = np.min( np.abs(valid * angle[sel]))
         else:
             dmin = None # wall does not exist
             didx = None

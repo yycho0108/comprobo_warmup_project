@@ -1,0 +1,3 @@
+<launch>
+    <node pkg="rviz" type="rviz" name="rviz" output="screen" args="-d $(find warmup_project)/rviz/default.rviz"/>
+</launch>
