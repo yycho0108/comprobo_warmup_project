@@ -3,10 +3,10 @@
     <!-- better way to deal with avoiding to record images?? consumes significant processing power for compression -->
 
     <node pkg="rosbag" type="record"  name="rosbag" if="$(arg image)"
-        args="/tf /tf_static /cmd_vel /odom /scan /stable_scan /camera/camera_info /camera/image_raw/compressed -o /tmp/warmup" output="screen">
+        args="/tf /tf_static /cmd_vel /odom /scan /stable_scan /viz_pt /camera/camera_info /camera/image_raw/compressed -o /tmp/warmup" output="screen">
     </node>
 
     <node pkg="rosbag" type="record"  name="rosbag" unless="$(arg image)"
-        args="/tf /tf_static /cmd_vel /odom /scan /stable_scan -o /tmp/warmup" output="screen">
+        args="/tf /tf_static /cmd_vel /odom /scan /stable_scan /viz_pt -o /tmp/warmup" output="screen">
     </node>
 </launch>

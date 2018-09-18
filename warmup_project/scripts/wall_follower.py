@@ -24,8 +24,8 @@ class WallFollower(object):
 
         # distance threshold constants
         self.radius_ = rospy.get_param('~r', 0.3)
-        self.target_ = rospy.get_param('~d', 0.6)
-        self.danger_ = rospy.get_param('~q', 0.5)
+        self.target_ = rospy.get_param('~d', 0.7)
+        self.danger_ = rospy.get_param('~q', 0.6)
 
         # pid parameters
         kp = rospy.get_param('~kp', 0.5)

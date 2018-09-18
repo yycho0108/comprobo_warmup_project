@@ -8,6 +8,12 @@ from tf_conversions import posemath as pm
 from geometry_msgs.msg import Pose, Pose2D, Twist
 from warmup_project.utils import anorm, adiff
 
+def R(x):
+    c = np.cos(x)
+    s = np.sin(x)
+    r = [[c,-s],[s,c]]
+    return np.asarray(r, dtype=np.float32)
+
 class SquareDriver(object):
     def __init__(self):
         # receive ROS parameters
@@ -36,6 +42,7 @@ class SquareDriver(object):
         self.phase_  = 0
         self.phase_name_ = ['right', 'top', 'left', 'bottom']
         self.target_ = [(1.0,-1.0),(1.0,1.0), (-1.0,1.0),(-1.0,-1.0)]
+        self.target_ = np.asarray(self.target_) * 0.5
         self.origin_ = None
 
     @staticmethod
@@ -79,7 +86,7 @@ class SquareDriver(object):
             else:
                 # has origin
                 ox, oy = self.origin_.x, self.origin_.y
-                gx, gy = self.target_[self.phase_]
+                gx, gy = R(self.origin_.theta).dot(self.target_[self.phase_])
                 dx, dy = (gx+ox)-self.pose_.x, (gy+oy)-self.pose_.y
                 theta = np.arctan2(dy, dx)
 
