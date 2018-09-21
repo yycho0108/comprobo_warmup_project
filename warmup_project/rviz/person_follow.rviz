@@ -6,8 +6,7 @@ Panels:
       Expanded:
         - /Global Options1
         - /Status1
-        - /LaserScan1
-        - /Marker1/Namespaces1
+        - /PersonMarker1/Status1
       Splitter Ratio: 0.5
     Tree Height: 619
   - Class: rviz/Selection
@@ -201,18 +200,10 @@ Visualization Manager:
       Use Fixed Frame: true
       Use rainbow: true
       Value: true
-    - Class: rviz/Marker
-      Enabled: true
-      Marker Topic: /viz_pt
-      Name: Marker
-      Namespaces:
-        {}
-      Queue Size: 100
-      Value: true
     - Class: rviz/Axes
       Enabled: true
       Length: 0.5
-      Name: Axes
+      Name: BaseLinkAxis
       Radius: 0.0500000007
       Reference Frame: base_link
       Value: true
@@ -226,7 +217,7 @@ Visualization Manager:
       Length: 0.300000012
       Line Style: Lines
       Line Width: 0.0299999993
-      Name: Path
+      Name: NavTrajectory
       Offset:
         X: 0
         Y: 0
@@ -237,6 +228,22 @@ Visualization Manager:
       Shaft Diameter: 0.100000001
       Shaft Length: 0.100000001
       Topic: /path
+      Unreliable: false
+      Value: true
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /viz_pt
+      Name: PersonMarker
+      Namespaces:
+        "": true
+      Queue Size: 100
+      Value: true
+    - Alpha: 1
+      Class: rviz/Polygon
+      Color: 25; 255; 0
+      Enabled: true
+      Name: DetectArea
+      Topic: /viz_ar
       Unreliable: false
       Value: true
   Enabled: true
@@ -263,7 +270,7 @@ Visualization Manager:
   Value: true
   Views:
     Current:
-      Angle: 1.57500017
+      Angle: 1.56500018
       Class: rviz/TopDownOrtho
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.0599999987
@@ -273,11 +280,11 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.00999999978
-      Scale: 43.8408356
+      Scale: 101.600655
       Target Frame: <Fixed Frame>
       Value: TopDownOrtho (rviz)
-      X: 0.631712914
-      Y: 0.170586541
+      X: -2.3233273
+      Y: -0.633458257
     Saved: ~
 Window Geometry:
   Displays:

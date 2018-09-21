@@ -1,3 +1,5 @@
+#!/usr/bin/env python2
+
 from warmup_project.person_detector import PersonDetector
 import warmup_project.utils as U
 import numpy as np
@@ -6,16 +8,17 @@ import rospy
 
 from std_msgs.msg import ColorRGBA
 from sensor_msgs.msg import LaserScan
-from geometry_msgs.msg import Point
+from geometry_msgs.msg import Point, Point32, Polygon, PolygonStamped
 from visualization_msgs.msg import Marker
 
 class PersonDetectorNode(object):
     def __init__(self):
         min_x = rospy.get_param('~min_x', 0.3)
         max_x = rospy.get_param('~max_x', 2.0)
-
-        max_y = rospy.get_param('~max_y', 1.0) # note: get max_y first
+        max_y = rospy.get_param('~max_y', 0.5) # note: get max_y first
         min_y = rospy.get_param('~min_y', -max_y)
+
+        self.ar_ = [(min_x,min_y),(min_x,max_y),(max_x,max_y),(max_x,min_y)]
 
         self.scan_ = None
         self.new_scan_ = False
@@ -26,12 +29,24 @@ class PersonDetectorNode(object):
 
         self.detector_ = PersonDetector(min_x,max_x,min_y,max_y)
         self.scan_sub_ = rospy.Subscriber('scan', LaserScan, self.scan_cb)
+        self.ar_pub_  = rospy.Publisher('viz_ar', PolygonStamped, queue_size=2)
+        self.ar_msg_  = PolygonStamped()
         self.viz_pub_ = rospy.Publisher('viz_pt', Marker, queue_size=2)
 
-    def publish(self, info):
-        c0, c1 = info
-        p0x,p0y = np.mean(c0,axis=0) # centroid
-        p1x,p1y = np.mean(c1,axis=0) # centroid
+    def publish(self, suc, info):
+        # area ...
+        self.ar_msg_.header.stamp = rospy.Time.now()
+        self.ar_msg_.header.frame_id = 'base_link'
+        self.ar_msg_.polygon = Polygon([Point32(x,y,0) for (x,y) in self.ar_])
+        self.ar_pub_.publish(self.ar_msg_)
+
+        # detections ...
+        if not suc:
+            return
+
+        p0, p1 = info
+        p0x,p0y = p0 # np.mean(c0,axis=0) # centroid
+        p1x,p1y = p1 # np.mean(c1,axis=0) # centroid
 
         p0 = Point(x=p0x,y=p0y)
         p1 = Point(x=p1x,y=p1y)
@@ -64,8 +79,7 @@ class PersonDetectorNode(object):
             mask = (self.dmin_ < self.scan_) & (self.scan_ < self.dmax_)
             rq_valid = rq[mask]
             suc, info = self.detector_(rq_valid)
-            if suc:
-                self.publish(info)
+            self.publish(suc, info)
             self.new_scan_ = False
 
     def run(self):

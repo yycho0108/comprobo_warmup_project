@@ -6,13 +6,7 @@ from nav_msgs.msg import Odometry
 import numpy as np
 from tf_conversions import posemath as pm
 from geometry_msgs.msg import Pose, Pose2D, Twist
-from warmup_project.utils import anorm, adiff
-
-def R(x):
-    c = np.cos(x)
-    s = np.sin(x)
-    r = [[c,-s],[s,c]]
-    return np.asarray(r, dtype=np.float32)
+from warmup_project.utils import anorm, adiff, R
 
 class SquareDriver(object):
     def __init__(self):
