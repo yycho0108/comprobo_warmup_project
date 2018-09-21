@@ -4,8 +4,8 @@
     <include file="$(find gazebo_ros)/launch/empty_world.launch">
         <arg name="use_sim_time" value="true"/>
         <arg name="debug" value="false"/>
-        <!--<arg name="world_name" value="$(find warmup_project)/worlds/jackal_race.world"/>-->
-        <arg name="world_name" value="$(find warmup_project)/worlds/garage.world"/>
+        <arg name="world_name" value="$(find warmup_project)/worlds/jackal_race.world"/>
+        <!--<arg name="world_name" value="$(find warmup_project)/worlds/garage.world"/>-->
     </include>
 
     <include file="$(find neato_simulator)/launch/includes/neato.launch.xml"/>
