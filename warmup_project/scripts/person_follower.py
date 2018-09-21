@@ -1,3 +1,5 @@
+#!/usr/bin/env python2
+
 from warmup_project.pid import PID
 from warmup_project.person_detector import PersonDetector
 from warmup_project import utils as U
@@ -12,7 +14,7 @@ from tf_conversions import posemath as pm
 from std_msgs.msg import ColorRGBA
 from sensor_msgs.msg import LaserScan
 from visualization_msgs.msg import Marker
-from geometry_msgs.msg import Point, Point32
+from geometry_msgs.msg import Point, Point32, Twist
 
 ## TRACKING ##
 # TODO : incorporate more complex walking model?
@@ -29,7 +31,7 @@ def ukf_fx(s, dt):
 class PersonTracker(object):
     def __init__(self):
 
-        self.vmax_ = rospy.get_param('~vmax', 3.0)
+        self.vmax_ = rospy.get_param('~vmax', 6.0)
 
         sigma_points = MerweScaledSigmaPoints(4,1e-3,2,-2)
         #sigma_points = JulierSigmaPoints(4, 5-2, sqrt_method=np.linalg.cholesky)
@@ -71,6 +73,9 @@ class PersonTracker(object):
             ukf.P_prior = ukf.P.copy()
             ukf.x_post  = ukf.x.copy()
             ukf_P_post  = ukf.P.copy()
+
+            ukf.Q = np.diag(np.square([0.05,0.05,0.5,0.5])) # TODO : tune
+            ukf.R = np.diag(np.square([0.09,0.09]))
 
         self.time_ = rospy.Time.now()
 
@@ -119,6 +124,9 @@ class PersonFollowerNode(object):
         max_y = rospy.get_param('~max_y', 0.5) # note: get max_y first
         min_y = rospy.get_param('~min_y', -max_y)
 
+        # tracker args
+        self.d_targ_ = rospy.get_param('~d_target', 0.6)
+
         self.detector_ = PersonDetector(min_x,max_x,min_y,max_y)
         self.tracker_  = PersonTracker()
 
@@ -129,12 +137,19 @@ class PersonFollowerNode(object):
         self.dmax_ = None
         self.init_ = False
 
+        self.pid_v_ = PID(kp=1.0,max_u=0.5,max_i=0.0)
+        self.pid_w_ = PID(kp=1.0,max_u=0.5,max_i=0.0)
+
         self.viz_pub_ = rospy.Publisher('viz_pt', Marker, queue_size=2)
         self.tfl_ = tf.TransformListener()
         self.calib_srv_ = rospy.Service("calibrate", Empty, self.calibrate)
         self.calibrated_ = False
         self.calibrate_req_ = False
         self.scan_sub_ = rospy.Subscriber('scan', LaserScan, self.scan_cb)
+
+        # control
+        self.cmd_vel_ = Twist()
+        self.cmd_pub_ = rospy.Publisher('cmd_vel', Twist, queue_size=5)
 
     def calibrate(self, _):
         rospy.loginfo("Stand in front of the robot until calibration is complete")
@@ -172,7 +187,6 @@ class PersonFollowerNode(object):
         msg.scale.x = msg.scale.y = msg.scale.z = 0.2
 
         self.viz_pub_.publish(msg)
-
 
     def scan_cb(self, msg):
         self.new_scan_ = True
@@ -216,17 +230,31 @@ class PersonFollowerNode(object):
             self.calibrated_ = suc
             self.calibrate_req_ = False
             rospy.loginfo('Calibration Success : {}'.format(self.calibrated_))
-            #### TODO : REMEMBER TO CONVERT TO ODOM FRAME!! ####
             info_global = self.apply_scan_tf(info)
             self.tracker_.initialize(info_global)
 
         if self.calibrated_:
             now = rospy.Time.now()
             dt = (now - self.tracker_.time_).to_sec()
-            #### TODO : REMEMBER TO CONVERT TO ODOM FRAME!! ####
             xy_valid = U.rq2xy(rq_valid)
             xy_valid_global = self.apply_scan_tf(xy_valid)
             p_l, p_r = self.tracker_(xy_valid_global, dt)
+
+            # controls computation
+            p = np.mean([p_l,p_r], axis=0)
+            p = self.apply_scan_tf([p], 'base_link', 'odom')
+            r, q = U.xy2rq(p)[0]
+
+            err_d = (r - self.d_targ_)
+            err_q = (q - 0.0)
+
+            u_v = self.pid_v_(err_d, dt)
+            u_w = self.pid_w_(err_q, dt)
+            self.cmd_vel_.linear.x = u_v
+            self.cmd_vel_.angular.z = u_w
+            self.cmd_pub_.publish(self.cmd_vel_)
+
+            # logging
             self.publish(True, (p_l, p_r))
             self.tracker_.time_ = now
 
