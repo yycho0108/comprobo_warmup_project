@@ -12,8 +12,9 @@ import warmup_project.utils as U
 from std_msgs.msg import ColorRGBA
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Twist, Point, Point32, Pose, PoseStamped, Polygon, PolygonStamped
+from geometry_msgs.msg import PoseArray
 from visualization_msgs.msg import Marker
-
+from sklearn.cluster import DBSCAN
 
 class ObstacleAvoider(object):
     def __init__(self):
@@ -33,8 +34,8 @@ class ObstacleAvoider(object):
         self.radius_ = rospy.get_param('~radius', 0.2) # todo : use "footprint" instead
 
         # potential field params
-        self.a_ = rospy.get_param('~a', 0.5) # ??
-        self.b_ = rospy.get_param('~b', 0.01) # ??
+        self.a_ = rospy.get_param('~a', 1.0) # ??
+        self.b_ = rospy.get_param('~b', 0.1) # ??
         self.r_ = rospy.get_param('~r', 0.25)
         self.s_ = rospy.get_param('~s', 2.0)
 
@@ -50,9 +51,9 @@ class ObstacleAvoider(object):
         self.viz_pub_ = rospy.Publisher('viz_pt', Marker, queue_size=2)
         self.tfl_ = tf.TransformListener()
 
-        self.pid_v_ = PID(kp=0.5, ki=0.03, max_u=0.5,max_i=0.25)
+        self.pid_v_ = PID(kp=0.4, ki=0.03, max_u=0.5,max_i=0.3)
         self.k_v_ = 0.2 #??
-        self.pid_w_ = PID(kp=1.0, ki=0.08, max_u=2.0,max_i=1.0)
+        self.pid_w_ = PID(kp=5.0, ki=0.02, max_u=5.0, max_i=1.0)
         self.last_cmd_ = rospy.Time.now()
         self.cmd_pub_ = rospy.Publisher('cmd_vel', Twist, queue_size=5)
         self.cmd_vel_ = Twist()
@@ -62,6 +63,11 @@ class ObstacleAvoider(object):
         self.goal_sub_ = rospy.Subscriber('/move_base_simple/goal', PoseStamped, self.goal_cb)
         self.goal_viz_pub_ = rospy.Publisher('goal_area', PolygonStamped, queue_size=5)
         self.goal_viz_msg_ = PolygonStamped()
+
+        self.obs_viz_pub_ = rospy.Publisher('obs_field', PoseArray, queue_size=2)
+        self.obs_viz_msg_ = PoseArray()
+
+        self.cls_viz_pub_ = rospy.Publisher('clusters', Marker, queue_size=2)
 
     def goal_cb(self, msg):
         self.goal_ = msg.pose.position
@@ -84,8 +90,8 @@ class ObstacleAvoider(object):
         self.new_scan_ = True
         if not self.init_:
             self.angle_ = U.anorm(np.linspace(0,2*np.pi,len(msg.ranges),endpoint=True))
-            #self.dmin_ = msg.range_min
-            self.dmin_ = max(msg.range_min, self.radius_) # -- radius
+            self.dmin_ = msg.range_min
+            #self.dmin_ = max(msg.range_min, self.radius_) # -- radius
             self.dmax_ = msg.range_max
             self.init_ = True
             self.scan_fpt_ = U.ScanFootprint(self.fpt_, self.angle_)
@@ -120,8 +126,6 @@ class ObstacleAvoider(object):
 
         ar = np.concatenate([ar_g, ar_b], axis=0)
 
-
-
         self.goal_viz_msg_.header.stamp = rospy.Time.now()
         self.goal_viz_msg_.header.frame_id = 'odom'
         self.goal_viz_msg_.polygon = Polygon([Point32(x,y,0) for (x,y) in ar])
@@ -144,6 +148,44 @@ class ObstacleAvoider(object):
 
         self.viz_pub_.publish(msg)
 
+    def obs_viz(self, dx, dy, h):
+        uv = np.stack([dx,dy], axis=-1) # [n,2]
+        uv = uv.dot(U.R(h))
+
+        self.obs_viz_msg_.header.frame_id = 'base_link'
+        self.obs_viz_msg_.header.stamp = rospy.Time.now()
+
+        self.obs_viz_msg_.poses = []
+
+        uv = sorted(uv, key=np.linalg.norm, reverse=True)
+
+        for (x,y) in uv[:5]:
+            # show the most important <=10 contributors
+            p = Pose()
+            h = np.arctan2(y,x)
+            p.orientation.z=np.sin(h/2.)
+            p.orientation.w=np.cos(h/2.)
+            p.position.x=0
+            p.position.y=0
+            self.obs_viz_msg_.poses.append(p)
+
+        self.obs_viz_pub_.publish(self.obs_viz_msg_)
+
+    def cls_viz(self, cls):
+        col = ColorRGBA(0.0,0.0,1.0,1.0)
+
+        msg = Marker()
+        msg.lifetime = rospy.Duration(1.0)
+        msg.header.frame_id = 'base_link'
+
+        msg.type = msg.POINTS
+        msg.action = msg.ADD
+        msg.points = [Point(x=x,y=y) for (x,y) in cls]
+        msg.colors = [col for _ in msg.points]
+        msg.scale.x = msg.scale.y = msg.scale.z = 0.1
+
+        self.cls_viz_pub_.publish(msg)
+
     def step(self):
         if self.goal_ is None:
             return
@@ -156,6 +198,8 @@ class ObstacleAvoider(object):
             dt = (now - self.last_cmd_).to_sec()
             rq = np.stack([self.scan_, self.angle_], axis=-1)
             mask = (self.dmin_ < self.scan_) & (self.scan_ < self.dmax_)
+
+            xy = U.rq2xy(rq[mask])
 
             mask &= (scan_offset > 0) # internal-points rectification
 
@@ -190,6 +234,18 @@ class ObstacleAvoider(object):
             gdx = dx # dx,dy are in odom coordinates !
             gdy = dy
 
+            # cluster obstacles
+            db = DBSCAN(eps=0.2, min_samples=3).fit(xy)
+            labels = db.labels_
+            n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+            print n_clusters
+            cls = []
+            for i in range(n_clusters):
+                cl = xy[labels==i]
+                p  = np.mean(cl, axis=0)
+                cls.append(p)
+            self.cls_viz(cls)
+
             r, q = rq.T
             q = U.anorm(q+h) # rotate to align obstacle points with odom coordinates
 
@@ -202,16 +258,20 @@ class ObstacleAvoider(object):
             dx = np.zeros_like(r)
             dy = np.zeros_like(r)
 
-            dx[obs] = - 99999. * np.sign(np.cos(q[obs]))
-            dy[obs] = - 99999. * np.sign(np.sin(q[obs]))
+            dx[obs] = - 9. * np.sign(np.cos(q[obs]))
+            dy[obs] = - 9. * np.sign(np.sin(q[obs]))
 
-            dx[n_obs] = - self.b_ * (self.s_ + self.r_ - r[n_obs]) * np.cos(q[n_obs])
-            dy[n_obs] = - self.b_ * (self.s_ + self.r_ - r[n_obs]) * np.sin(q[n_obs])
+            dx[n_obs] = - self.b_ * (1.0 / (r[n_obs])) * np.cos(q[n_obs])
+            dy[n_obs] = - self.b_ * (1.0 / (r[n_obs])) * np.sin(q[n_obs])
 
             dx[out] *= 0
             dy[out] *= 0
 
-            uv = np.sum(np.stack([dx,dy], axis=-1), axis=0, keepdims=True)
+            self.obs_viz(dx,dy,h)
+
+            uv = np.stack([dx,dy], axis=-1)
+            uv = sorted(uv, key=np.linalg.norm, reverse=True)
+            uv = np.sum(uv[:5], axis=0, keepdims=True)
             uv += [[gdx,gdy]]
             #uv /= np.linalg.norm(uv, axis=-1)
 
@@ -252,7 +312,7 @@ class ObstacleAvoider(object):
 
             self.cmd_vel_.linear.x = v
             self.cmd_vel_.angular.z = w
-            self.cmd_pub_.publish(self.cmd_vel_)
+            #self.cmd_pub_.publish(self.cmd_vel_)
 
             self.last_cmd_ = now
 
