@@ -1,7 +1,7 @@
 <launch>
     <arg name="image" default="false"/>
     <arg name="base_topic" default="/tf /tf_static /cmd_vel /odom /scan /stable_scan /move_base_simple/goal"/>
-    <arg name="viz_topic" default="/viz_pt /clusters /obs_field /goal_area /path "/>
+    <arg name="viz_topic" default="/viz_pt /clusters /obs_field /goal_area /path /rec_path"/>
     <arg name="img_topic" default="/camera/camera_info /camera/image_raw/compressed"/>
     <!-- better way to deal with avoiding to record images?? consumes significant processing power for compression -->
 

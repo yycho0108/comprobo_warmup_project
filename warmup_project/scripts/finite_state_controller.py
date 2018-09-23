@@ -5,10 +5,12 @@ import tf
 import rospy
 import numpy as np
 from tf_conversions import posemath as pm
-from std_msgs.msg import ColorRGBA
+from std_msgs.msg import Header, ColorRGBA
 from sensor_msgs.msg import LaserScan
 from visualization_msgs.msg import Marker
 from geometry_msgs.msg import Point, Point32, Twist
+from geometry_msgs.msg import Pose, PoseStamped, Quaternion
+from nav_msgs.msg import Path
 
 from warmup_project import utils as U
 from warmup_project.person_detector import PersonDetector
@@ -135,6 +137,7 @@ class Record(State):
         self.tfl_ = tf.TransformListener()
         self.viz_pub_ = None # rospy.Publisher('viz_pt', Marker, queue_size=2)
         self.cmd_pub_ = None
+        self.path_pub_ = None
         self.calib_srv_ = None # rospy.Service("calibrate", Empty, self.calibrate)
         self.scan_sub_ = None # rospy.Subscriber('scan', LaserScan, self.scan_cb)
         self.play_srv_ = None # rospy.Service('play', Empty, self.play_cb)
@@ -166,6 +169,9 @@ class Record(State):
 
         # output data
         self.trajectory_=[]
+        self.path_ = Path()
+        self.path_.header.frame_id = 'odom'
+
 
     def start(self, arg):
         print 'Starting!'
@@ -176,6 +182,7 @@ class Record(State):
         self.calib_srv_ = rospy.Service("calibrate", Empty, self.calibrate)
         self.play_srv_ = rospy.Service('play', Empty, self.play_cb)
         self.scan_sub_ = rospy.Subscriber('stable_scan', LaserScan, self.scan_cb)
+        self.path_pub_ = rospy.Publisher('rec_path', Path, queue_size=10)
 
     def stop(self):
         if self.scan_sub_ is not None:
@@ -293,7 +300,13 @@ class Record(State):
             p = np.mean([p_l,p_r], axis=0)
             self.pos_ = self.apply_scan_tf([np.copy(p)], 'base_link', 'odom')[0]
 
+            # trajectory + visualization
             self.trajectory_.append(p)
+            self.path_.poses.append(PoseStamped(
+                header=Header(frame_id='odom', stamp=rospy.Time.now()),
+                    pose=Pose(Point(p[0],p[1],0),Quaternion(0,0,0,1))))
+            self.path_.header.stamp = rospy.Time.now()
+            self.path_pub_.publish(self.path_)
 
             # logging
             self.publish(True, (p_l, p_r))
