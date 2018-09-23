@@ -8,13 +8,13 @@ def adiff(a,b):
 
 def rq2xy(rq):
     # (n,2) -> (n,2)
-    r, q = rq.T
+    r, q = np.asarray(rq).T
     x = r * np.cos(q)
     y = r * np.sin(q)
     return np.stack([x,y], axis=-1)
 
 def xy2rq(xy):
-    x, y = xy.T
+    x, y = np.asarray(xy).T
     r = np.linalg.norm([x,y], axis=0)
     q = np.arctan2(y,x)
     return np.stack([r,q], axis=-1)
@@ -103,24 +103,24 @@ class ScanFootprint(object):
     def __call__(self, scan, scale=1.0):
         return scan - (self.dr_ * scale)
 
-def main():
-    fpt = np.asarray([[ 0.25649121, -0.17213032],
-        [ 0.17213032, -0.17468672],
-        [ 0.0562406 , -0.17468672],
-        [-0.00596491, -0.14315788],
-        [-0.05027569, -0.09117794],
-        [-0.06987468, -0.00426065],
-        [-0.05027569,  0.07243107],
-        [ 0.00170426,  0.13804510],
-        [ 0.05624060,  0.16616541],
-        [ 0.16957393,  0.16957393],
-        [ 0.25478697,  0.16786967]], dtype=np.float32)
-    ang = anorm(np.linspace(0,2*np.pi,360,endpoint=True))
-    sfp = ScanFootprint(fpt,ang)
-    sfp.show()
-
-if __name__ == "__main__":
-    main()
-
-
-
+#def main():
+#    fpt = np.asarray([[ 0.25649121, -0.17213032],
+#        [ 0.17213032, -0.17468672],
+#        [ 0.0562406 , -0.17468672],
+#        [-0.00596491, -0.14315788],
+#        [-0.05027569, -0.09117794],
+#        [-0.06987468, -0.00426065],
+#        [-0.05027569,  0.07243107],
+#        [ 0.00170426,  0.13804510],
+#        [ 0.05624060,  0.16616541],
+#        [ 0.16957393,  0.16957393],
+#        [ 0.25478697,  0.16786967]], dtype=np.float32)
+#    ang = anorm(np.linspace(0,2*np.pi,360,endpoint=True))
+#    sfp = ScanFootprint(fpt,ang)
+#    sfp.show()
+#
+#if __name__ == "__main__":
+#    main()
+#
+#
+#
