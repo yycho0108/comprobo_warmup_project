@@ -63,6 +63,8 @@ class PersonTracker(object):
 
             ukf.Q = np.diag(np.square([0.05,0.05,0.5,0.5])) # TODO : tune
             ukf.R = np.diag(np.square([0.09,0.09]))
+        self.l_lost_ = 0
+        self.r_lost_ = 0
 
 
     def __call__(self, pts, dt):

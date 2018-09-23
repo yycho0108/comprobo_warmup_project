@@ -20,6 +20,7 @@ from abc import abstractmethod, ABCMeta
 import cv2
 
 def approx(x, tol=0.2, res=0.01):
+    x = np.asarray(x, dtype=np.float32)
     x_int = (x/res).astype(np.int32)
     x_approx = res * cv2.approxPolyDP(x_int, tol, closed=False)
     return x_approx[:,0,:]
@@ -87,6 +88,7 @@ class Idle(State):
         self.cmd_pub_ = None
 
     def start(self, arg):
+        self.rec_req_ = False
         self.rec_srv_ = rospy.Service("record", Empty, self.rec_cb)
         self.cmd_pub_ = rospy.Publisher('cmd_vel', Twist, queue_size=5)
 
@@ -96,12 +98,14 @@ class Idle(State):
         self.rec_srv_ = None
 
         if self.cmd_pub_ is not None:
-            self.cmd_pub_.unregister()
+            #self.cmd_pub_.unregister()
+            pass
         self.cmd_pub_ = None
         return None
 
     def rec_cb(self,_):
         self.rec_req_ = True
+        return EmptyResponse()
 
     def step(self):
         self.cmd_pub_.publish(Twist())
@@ -130,6 +134,7 @@ class Record(State):
         # Create empty ROS handles
         self.tfl_ = tf.TransformListener()
         self.viz_pub_ = None # rospy.Publisher('viz_pt', Marker, queue_size=2)
+        self.cmd_pub_ = None
         self.calib_srv_ = None # rospy.Service("calibrate", Empty, self.calibrate)
         self.scan_sub_ = None # rospy.Subscriber('scan', LaserScan, self.scan_cb)
         self.play_srv_ = None # rospy.Service('play', Empty, self.play_cb)
@@ -154,6 +159,7 @@ class Record(State):
         # calibration
         self.calibrated_ = False
         self.calibrate_req_ = False
+        self.pos_ = None
 
         # transition
         self.play_req_ = False
@@ -166,6 +172,7 @@ class Record(State):
         self.reset()
         # create ros handles
         self.viz_pub_ = rospy.Publisher('viz_pt', Marker, queue_size=2)
+        self.cmd_pub_ = rospy.Publisher('cmd_vel', Twist, queue_size=5)
         self.calib_srv_ = rospy.Service("calibrate", Empty, self.calibrate)
         self.play_srv_ = rospy.Service('play', Empty, self.play_cb)
         self.scan_sub_ = rospy.Subscriber('stable_scan', LaserScan, self.scan_cb)
@@ -183,8 +190,14 @@ class Record(State):
             self.calib_srv_.shutdown('Record State Finished')
         self.calib_srv_ = None
 
+        if self.cmd_pub_ is not None:
+            #self.cmd_pub_.unregister()
+            pass
+        self.cmd_pub_ = None
+
         if self.viz_pub_ is not None:
-            self.viz_pub_.unregister()
+            #self.viz_pub_.unregister()
+            pass
         self.viz_pub_ = None
         return approx(self.trajectory_)
 
@@ -253,7 +266,7 @@ class Record(State):
             self.new_scan_ = False
 
         if self.calibrate_req_:
-            suc, info = self.detector_(rq_valid)
+            suc, info = self.detector_(rq_valid, self.pos_)
             self.calibrated_ = suc
             rospy.loginfo('Calibration Success : {}'.format(self.calibrated_))
             if suc:
@@ -271,12 +284,14 @@ class Record(State):
             p_l, p_r, l_lost, r_lost = self.tracker_(xy_valid_global, dt)
 
             if (l_lost > 3 or r_lost > 3): # lost for 3 successive frames
+                rospy.loginfo('Lost!')
                 self.calibrated_ = False
                 self.calibrate_req_ = True
                 return 'Record'
 
             # controls computation
             p = np.mean([p_l,p_r], axis=0)
+            self.pos_ = self.apply_scan_tf([np.copy(p)], 'base_link', 'odom')[0]
 
             self.trajectory_.append(p)
 
@@ -324,7 +339,8 @@ class Replay(object):
         self.stop_srv_ = None
 
         if self.cmd_pub_ is not None:
-            self.cmd_pub_.unregister()
+            #self.cmd_pub_.unregister()
+            pass
         self.cmd_pub_ = None
         return None
 
