@@ -13,3 +13,13 @@
 ## Obstacle Avoidance
 
 ![obstacleavoid](figs/obstacle_avoid.gif)
+
+## Finise State Controller
+
+### FSM Architecture
+
+![fsmarch](figs/fsm.svg)
+
+### FSM DEmo
+
+![fsmdemo](figs/fsm.gif)
