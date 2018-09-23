@@ -17,6 +17,13 @@ from warmup_project.pid import PID
 
 from abc import abstractmethod, ABCMeta
 
+import cv2
+
+def approx(x, tol=0.2, res=0.01):
+    x_int = (x/res).astype(np.int32)
+    x_approx = res * cv2.approxPolyDP(x_int, tol, closed=False)
+    return x_approx[:,0,:]
+
 class FiniteStateController(object):
     def __init__(self, states):
         self.states_ = states
@@ -161,7 +168,7 @@ class Record(State):
         self.viz_pub_ = rospy.Publisher('viz_pt', Marker, queue_size=2)
         self.calib_srv_ = rospy.Service("calibrate", Empty, self.calibrate)
         self.play_srv_ = rospy.Service('play', Empty, self.play_cb)
-        self.scan_sub_ = rospy.Subscriber('scan', LaserScan, self.scan_cb)
+        self.scan_sub_ = rospy.Subscriber('stable_scan', LaserScan, self.scan_cb)
 
     def stop(self):
         if self.scan_sub_ is not None:
@@ -179,8 +186,7 @@ class Record(State):
         if self.viz_pub_ is not None:
             self.viz_pub_.unregister()
         self.viz_pub_ = None
-
-        return np.copy(self.trajectory_)
+        return approx(self.trajectory_)
 
     def calibrate(self, _):
         rospy.loginfo("Stand in front of the robot until calibration is complete")
@@ -280,12 +286,6 @@ class Record(State):
 
         return 'Record'
 
-def to_pose2d(msg):
-    x, y  = [msg.position.x, msg.position.y]
-    rz = 2.0 * np.arctan2(msg.orientation.z, msg.orientation.w)
-    pose = Pose2D(x=x,y=y,theta=rz)
-    return pose
-
 class Replay(object):
     """
     replay trajectories from exemplar.
@@ -378,6 +378,7 @@ class Replay(object):
         self.time_ = now
         return 'Replay'
 
+
 def main():
     rospy.init_node('fsm')
     fsm = FiniteStateController(
@@ -386,6 +387,9 @@ def main():
                 'Record' : Record(),
                 'Replay' : Replay()
                 })
+    # test idle ...
+    # fsm.start('Idle', None)
+    # fsm.run()
 
     # test record ...
     # fsm.start('Record', None)
@@ -396,12 +400,13 @@ def main():
     # c = np.cos(h)
     # s = np.sin(h)
     # trajectory = 2.0 * np.stack([c,s], axis=-1)
-    # print trajectory
+    # trajectory = approx(trajectory)
     # fsm.start('Replay', trajectory)
     # fsm.run()
 
     fsm.start('Idle', None)
     fsm.run()
+
 
 if __name__ == "__main__":
     main()

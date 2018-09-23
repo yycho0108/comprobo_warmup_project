@@ -49,7 +49,7 @@ class PersonFollowerNode(object):
         self.calib_srv_ = rospy.Service("calibrate", Empty, self.calibrate)
         self.calibrated_ = False
         self.calibrate_req_ = False
-        self.scan_sub_ = rospy.Subscriber('scan', LaserScan, self.scan_cb)
+        self.scan_sub_ = rospy.Subscriber('stable_scan', LaserScan, self.scan_cb)
 
         # control
         self.cmd_vel_ = Twist()

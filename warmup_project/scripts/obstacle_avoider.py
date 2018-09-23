@@ -58,7 +58,7 @@ class ObstacleAvoider(object):
         self.last_cmd_ = rospy.Time.now()
         self.cmd_pub_ = rospy.Publisher('cmd_vel', Twist, queue_size=5)
         self.cmd_vel_ = Twist()
-        self.scan_sub_ = rospy.Subscriber('scan', LaserScan, self.scan_cb)
+        self.scan_sub_ = rospy.Subscriber('stable_scan', LaserScan, self.scan_cb)
 
         self.goal_ = None
         self.goal_sub_ = rospy.Subscriber('/move_base_simple/goal', PoseStamped, self.goal_cb)

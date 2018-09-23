@@ -48,7 +48,7 @@ class WallFollower(object):
         # ros handles
         self.tfl_ = tf.TransformListener()
         self.cmd_pub_ = rospy.Publisher('cmd_vel', Twist, queue_size=5)
-        self.scan_sub_ = rospy.Subscriber('scan', LaserScan, self.scan_cb)
+        self.scan_sub_ = rospy.Subscriber('stable_scan', LaserScan, self.scan_cb)
         self.viz_pub_ = rospy.Publisher('viz_pt', Marker, queue_size=2)
 
     def footprint(self):
