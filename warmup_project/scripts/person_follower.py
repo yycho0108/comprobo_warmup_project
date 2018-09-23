@@ -2,10 +2,9 @@
 
 from warmup_project.pid import PID
 from warmup_project.person_detector import PersonDetector
+from warmup_project.person_tracker import PersonTracker
 from warmup_project import utils as U
 
-from filterpy.kalman import UnscentedKalmanFilter as UKF
-from filterpy.kalman import MerweScaledSigmaPoints, JulierSigmaPoints
 from std_srvs.srv import Empty, EmptyRequest, EmptyResponse
 import tf
 import rospy
@@ -15,105 +14,6 @@ from std_msgs.msg import ColorRGBA
 from sensor_msgs.msg import LaserScan
 from visualization_msgs.msg import Marker
 from geometry_msgs.msg import Point, Point32, Twist
-
-## TRACKING ##
-# TODO : incorporate more complex walking model?
-
-def ukf_hx(s):
-    return s[:2]
-
-def ukf_fx(s, dt):
-    x,y,vx,vy = s
-    x += vx * dt
-    y += vy * dt
-    return np.asarray([x,y,vx,vy])
-
-class PersonTracker(object):
-    def __init__(self):
-
-        self.vmax_ = rospy.get_param('~vmax', 6.0)
-
-        sigma_points = MerweScaledSigmaPoints(4,1e-3,2,-2)
-        #sigma_points = JulierSigmaPoints(4, 5-2, sqrt_method=np.linalg.cholesky)
-
-        self.ukf_l_ = UKF(
-                dim_x=4, # x,y,vx,vy
-                dim_z=2, # x,y
-                dt=0.01, # note: dynamic
-                hx=ukf_hx,
-                fx=ukf_fx,
-                points=sigma_points
-                )
-
-        self.ukf_r_ = UKF(
-                dim_x=4, # x,y,vx,vy
-                dim_z=2, # x,y
-                dt=0.01, # note: dynamic
-                hx=ukf_hx,
-                fx=ukf_fx,
-                points=sigma_points
-                )
-
-        self.time_ = rospy.Time.now()
-
-        # note ukf state coordinates are expressed in absolute (odom/map) frame,
-        # not relative (base_link) frame; this is to subtract self-motion from tracking data.
-
-    def initialize(self, info):
-        p0, p1 = info
-
-        # reset data with initial pose
-        self.ukf_l_.x[:] = [p0[0],p0[1],0,0]
-        self.ukf_r_.x[:] = [p1[0],p1[1],0,0]
-
-        # reset other cached data
-        for ukf in [self.ukf_l_, self.ukf_r_]:
-            ukf.P = np.diag(np.square([0.3,0.3,3.0,3.0])) #TODO: hardcoded
-            ukf.x_prior = ukf.x.copy()
-            ukf.P_prior = ukf.P.copy()
-            ukf.x_post  = ukf.x.copy()
-            ukf_P_post  = ukf.P.copy()
-
-            ukf.Q = np.diag(np.square([0.05,0.05,0.5,0.5])) # TODO : tune
-            ukf.R = np.diag(np.square([0.09,0.09]))
-
-        self.time_ = rospy.Time.now()
-
-
-    def __call__(self, pts, dt):
-        # predict ...
-        # note scans ~5Hz
-
-        for ukf in [self.ukf_l_, self.ukf_r_]:
-            ukf.P = (ukf.P + ukf.P.T) / 2.0
-            ukf.predict(dt)
-
-        p_l = self.ukf_l_.x.copy()[:2]
-        p_r = self.ukf_r_.x.copy()[:2]
-
-        p_pred = np.reshape([p_l, p_r], (-1, 1, 2)) #(2,1,2)
-        p_pts  = np.reshape(pts, (1, -1, 2)) #(1,N,2)
-        cost = np.linalg.norm(p_pred - p_pts, axis=-1) #(2,N)
-
-        sel  = (cost < (dt * self.vmax_)) # filter by distance
-        sel0 = (cost[0,:] < cost[1,:]) # i.e. 1 when cost(0)>cost(1)
-        sel1 = np.logical_not(sel0)
-
-        pts_l = pts[sel[0] & sel0]
-        pts_r = pts[sel[1] & sel1]
-
-        # update ...
-        if pts_l.size > 0:
-            pt_l = np.mean(pts_l, axis=0)
-            self.ukf_l_.update(pt_l)
-        if pts_r.size > 0:
-            pt_r = np.mean(pts_r, axis=0)
-            self.ukf_r_.update(pt_r)
-
-        p_l = self.ukf_l_.x.copy()[:2]
-        p_r = self.ukf_r_.x.copy()[:2]
-
-        return p_l, p_r
 
 class PersonFollowerNode(object):
     def __init__(self):
@@ -125,10 +25,14 @@ class PersonFollowerNode(object):
         min_y = rospy.get_param('~min_y', -max_y)
 
         # tracker args
+        self.v_max_ = rospy.get_param('~vmax', 6.0)
         self.d_targ_ = rospy.get_param('~d_target', 0.6)
 
         self.detector_ = PersonDetector(min_x,max_x,min_y,max_y)
-        self.tracker_  = PersonTracker()
+
+        now = rospy.Time.now().to_sec()
+        self.time_ = now
+        self.tracker_  = PersonTracker(vmax=self.v_max_)
 
         self.scan_ = None
         self.new_scan_ = False
@@ -228,17 +132,28 @@ class PersonFollowerNode(object):
         if self.calibrate_req_:
             suc, info = self.detector_(rq_valid)
             self.calibrated_ = suc
-            self.calibrate_req_ = False
             rospy.loginfo('Calibration Success : {}'.format(self.calibrated_))
-            info_global = self.apply_scan_tf(info)
-            self.tracker_.initialize(info_global)
+            if suc:
+                self.calibrate_req_ = False
+                now = rospy.Time.now().to_sec()
+                self.time_ = now
+                info_global = self.apply_scan_tf(info)
+                self.tracker_.initialize(info_global)
+                self.pid_v_.reset()
+                self.pid_w_.reset()
 
         if self.calibrated_:
-            now = rospy.Time.now()
-            dt = (now - self.tracker_.time_).to_sec()
+            now = rospy.Time.now().to_sec()
+            dt = (now - self.time_)
             xy_valid = U.rq2xy(rq_valid)
             xy_valid_global = self.apply_scan_tf(xy_valid)
-            p_l, p_r = self.tracker_(xy_valid_global, dt)
+            p_l, p_r, l_lost, r_lost = self.tracker_(xy_valid_global, dt)
+
+            if (l_lost > 3 or r_lost > 3): # lost for 3 successive frames
+                self.calibrated_ = False
+                self.calibrate_req_ = True
+                self.cmd_pub_.publish(Twist())
+                return
 
             # controls computation
             p = np.mean([p_l,p_r], axis=0)
@@ -256,7 +171,7 @@ class PersonFollowerNode(object):
 
             # logging
             self.publish(True, (p_l, p_r))
-            self.tracker_.time_ = now
+            self.time_ = now
 
     def run(self):
         rate = rospy.Rate(20)

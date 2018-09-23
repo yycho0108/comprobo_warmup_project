@@ -20,16 +20,24 @@ class PersonDetector(object):
         self.min_c_ = 0.15 * (2.0/3.0) # min cluster size
         self.max_c_ = 0.45 * (3.0/2.0) # max cluster size
 
-    def __call__(self, rq):
+    def __call__(self, rq, origin=None):
 
         r, q = rq.T
 
         # format data & apply range limits
         xy = U.rq2xy(rq)
         x, y = xy.T
-        x_mask = (self.min_x_ <= x) & (x <= self.max_x_)
-        y_mask = (self.min_y_ <= y) & (y <= self.max_y_)
-        xy = xy[x_mask & y_mask]
+
+        if origin is not None:
+            # filter around origin (base_link coordinate)
+            ox, oy = origin
+            dist = np.linalg.norm([x-ox,y-oy], axis=0)
+            xy = xy[dist < 1.0]
+        else:
+            # filter around default detection region
+            x_mask = (self.min_x_ <= x) & (x <= self.max_x_)
+            y_mask = (self.min_y_ <= y) & (y <= self.max_y_)
+            xy = xy[x_mask & y_mask]
 
         if np.size(xy) <= 0:
             return False, None
