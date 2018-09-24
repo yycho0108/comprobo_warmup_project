@@ -8,12 +8,12 @@ This project is an introductory *warmup* project for CompRobo at Olin College.
 
 As a means of gaining familiarity with robotics software algorithms in basic perception and reactive control, I implemented six fundamental robot behaviors on the Neato mobile robot:
 
-* [Teleoperation](#Teleoperation)
-* [Driving a Square](#Square-Driver)
-* [Wall Follower](#Wall-Follower)
-* [Obstacle Avoidance](#Obstacle-Avoidance)
-* [Person Follower](#Person-Follower)
-* [Finite-State Controler](#Finite-State-Controller)
+* [Teleoperation](#teleoperation)
+* [Driving a Square](#square-driver)
+* [Wall Follower](#wall-follower)
+* [Obstacle Avoidance](#obstacle-avoidance)
+* [Person Follower](#person-follower)
+* [Finite-State Controler](#finite-state-controller)
 
 ## Teleoperation
 
