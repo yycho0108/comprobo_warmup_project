@@ -40,9 +40,10 @@ class Teleop(object):
         self.last_cmd_ = rospy.Time(0)
         self.last_pub_ = rospy.Time(0)
         self.cmd_pub_  = rospy.Publisher('cmd_vel', Twist, queue_size=1)
-        #self.key_thread_ = threading.Thread(target=self.get_key_loop)
-        #self.key_thread_.setDaemon(True)
-        #self.key_thread_.start()
+
+        self.key_thread_ = threading.Thread(target=self.get_key_loop)
+        self.key_thread_.setDaemon(True)
+        self.key_thread_.start()
 
     def get_key(self):
         """ non-blocking keyboard input """
@@ -69,6 +70,7 @@ class Teleop(object):
             else:
                 print 'key', key
                 self.key_ = key
+                self.last_cmd_ = rospy.Time.now()
 
     def run(self):
         repeat_flag = (self.period_ > 0)
@@ -80,17 +82,17 @@ class Teleop(object):
                 now = rospy.Time.now()
 
                 # handle key input
-                #k = self.key_
-                k = self.get_key()
+                k = self.key_
+                #k = self.get_key()
                 if k == '\x03': # SIGINT
                     break
                 if k in self.vwmap_:
                     v, w = self.vwmap_[k]
                     cmd_vel.linear.x  = v * self.v_scale_
                     cmd_vel.angular.z = w * self.w_scale_
-                    self.last_cmd_ = now
-                    self.last_pub_ = now
-                    self.cmd_pub_.publish(cmd_vel)
+                    #self.last_cmd_ = now
+                    #self.last_pub_ = now
+                    #self.cmd_pub_.publish(cmd_vel)
                 else:
                     if k is not None:
                         print 'k', k
