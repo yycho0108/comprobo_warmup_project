@@ -16,6 +16,12 @@ from visualization_msgs.msg import Marker
 from geometry_msgs.msg import Point, Point32, Twist
 
 class PersonFollowerNode(object):
+    """
+    Follows a person based on LaserScan tracks.
+    Requires `/calibrate` service to be called prior to following.
+    Note that the calibration region is configurable via rosparams.
+    TODO(@yoonyoungcho): dynamic_reconfigure for person calibration
+    """
     def __init__(self):
 
         # detector args
@@ -102,6 +108,7 @@ class PersonFollowerNode(object):
         self.scan_ = np.asarray(msg.ranges, dtype=np.float32)
 
     def apply_scan_tf(self, pts, source='odom', target='base_link'):
+        """ transforms points according to transform cache """
         # pts = [N,2]
         try:
             #T_tf = self.tfl_.lookupTransform(target, source, rospy.Time(0))

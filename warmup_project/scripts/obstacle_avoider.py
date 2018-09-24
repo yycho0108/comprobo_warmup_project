@@ -17,6 +17,9 @@ from visualization_msgs.msg import Marker
 from sklearn.cluster import DBSCAN
 
 class ObstacleAvoider(object):
+    """
+    Obstacle Avoidance Reactive-control node based on a variant of the Potential Field algorithm.
+    """
     def __init__(self):
         # hardcoded neato footprint
         self.fpt_ = np.asarray([[ 0.25649121, -0.17213032],

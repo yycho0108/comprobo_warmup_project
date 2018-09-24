@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 
-# currently just holds sample key handling code
-
 import tty
 import select
 import sys
@@ -14,6 +12,11 @@ import rospy
 from geometry_msgs.msg import Twist
 
 class Teleop(object):
+    """
+    Keyboard-based teleoperation node.
+    Repeats the last command at an interval of `~period` seconds,
+    then stops the robot entirely after `~timeout` seconds since the last command input.
+    """
     def __init__(self):
         # sys
         self.settings_ = termios.tcgetattr(sys.stdin)
@@ -63,6 +66,7 @@ class Teleop(object):
         return key
 
     def get_key_loop(self, period=0.01):
+        """ continuously get key and feed data into self.key_ """
         key = None
         while not key == '\x03':
             key = self.get_key()
@@ -74,6 +78,7 @@ class Teleop(object):
                 self.new_key_ = True
 
     def run(self):
+        """ main loop """
         repeat_flag = (self.period_ > 0)
         cmd_vel     = Twist()
 

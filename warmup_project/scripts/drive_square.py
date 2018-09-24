@@ -9,6 +9,9 @@ from geometry_msgs.msg import Pose, Pose2D, Twist
 from warmup_project.utils import anorm, adiff, R
 
 class SquareDriver(object):
+    """
+    Closed-Loop Square Driver Robot Controller
+    """
     def __init__(self):
         # receive ROS parameters
         self.rate_ = rospy.get_param('~rate', 50.0)
@@ -41,12 +44,14 @@ class SquareDriver(object):
 
     @staticmethod
     def to_pose2d(msg):
+        """ convert from geometry_msgs/Pose -> geometry_msgs/Pose2D """
         x, y  = [msg.position.x, msg.position.y]
         rz = 2.0 * np.arctan2(msg.orientation.z, msg.orientation.w)
         pose = Pose2D(x=x,y=y,theta=rz)
         return pose
 
     def get_odom(self):
+        """ Get Odometry Information via TF, returns None if fails """
         try:
             pose_tf = self.tfl_.lookupTransform('base_link', 'odom', rospy.Time(0))
         except tf.Exception as e:
@@ -61,9 +66,11 @@ class SquareDriver(object):
         pose = self.to_pose2d(msg.pose.pose)
         if self.origin_ is None:
             self.origin_ = Pose2D(x=pose.x,y=pose.y,theta=pose.theta)
+        # save pose
         self.pose_ = Pose2D(x=pose.x,y=pose.y,theta=pose.theta)
 
     def run(self):
+        """ main loop """
         rate = rospy.Rate(self.rate_)
         cmd_vel = Twist()
         while not rospy.is_shutdown():
@@ -81,7 +88,8 @@ class SquareDriver(object):
                 # has origin
                 ox, oy = self.origin_.x, self.origin_.y
                 gx, gy = R(self.origin_.theta).dot(self.target_[self.phase_])
-                dx, dy = (gx+ox)-self.pose_.x, (gy+oy)-self.pose_.y
+                dx, dy = (gx+ox)-self.pose_.x, (gy+oy)-self.pose_.y # coordinate transformation
+                # TODO : simpler coordinate transformation via ROS API
                 theta = np.arctan2(dy, dx)
 
                 if np.linalg.norm([dx,dy]) < self.gtol_:

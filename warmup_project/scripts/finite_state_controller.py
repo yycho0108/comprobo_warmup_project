@@ -28,6 +28,10 @@ def approx(x, tol=0.2, res=0.01):
     return x_approx[:,0,:]
 
 class FiniteStateController(object):
+    """
+    Lightweight FSM Manager.
+    """
+
     def __init__(self, states):
         self.states_ = states
         self.state_ = ''
@@ -52,6 +56,17 @@ class FiniteStateController(object):
             rate.sleep()
 
 class State(object):
+    """
+    Abstract class for all States.
+
+    All states should implement:
+
+    State.start(arg) : initialize state with specified arguments
+    State.stop() : stop state and return arguments for next state
+    State.step() : run state and return next state
+
+    See docstrings under each function for a more detailed description.
+    """
     __metaclass__ = ABCMeta
     def __init__(self): pass
 
@@ -83,6 +98,11 @@ class State(object):
         return ''
 
 class Idle(State):
+    """
+    Idle State.
+    
+    Publishes zero as cmd_vel and waits on `/record` request.
+    """
     def __init__(self):
         super(Idle, self).__init__()
         self.rec_req_ = False
@@ -118,7 +138,7 @@ class Idle(State):
 
 class Record(State):
     """
-    record trajectories from exemplar.
+    Record trajectories from exemplar.
     """
     def __init__(self,
             min_x=0.3, max_x=2.0, min_y=-0.5, max_y=0.5,
@@ -316,7 +336,7 @@ class Record(State):
 
 class Replay(object):
     """
-    replay trajectories from exemplar.
+    Replay trajectories from exemplar.
     """
     def __init__(self):
         super(Replay, self).__init__()

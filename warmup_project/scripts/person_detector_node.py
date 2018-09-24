@@ -12,6 +12,7 @@ from geometry_msgs.msg import Point, Point32, Polygon, PolygonStamped
 from visualization_msgs.msg import Marker
 
 class PersonDetectorNode(object):
+    """ Detects and Visualizes person tracks. Mostly useful for debugging. """
     def __init__(self):
         min_x = rospy.get_param('~min_x', 0.3)
         max_x = rospy.get_param('~max_x', 2.0)

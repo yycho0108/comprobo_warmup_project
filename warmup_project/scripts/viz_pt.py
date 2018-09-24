@@ -4,6 +4,9 @@ import rospy
 from visualization_msgs.msg import Marker
 
 class VizPt(object):
+    """
+    Visualize Points - mostly here as reference
+    """
     def __init__(self):
         self.pub_ = rospy.Publisher('viz_pt', Marker, queue_size=2)
         self.msg_ = Marker()

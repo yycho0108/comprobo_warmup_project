@@ -9,6 +9,7 @@ from std_msgs.msg import Header
 from std_srvs.srv import Empty
 
 def xq2p(x,q):
+    """ convert POD to ROS datatyes """
     res = Pose()
     res.position.x = x[0]
     res.position.y = x[1]
@@ -21,6 +22,12 @@ def xq2p(x,q):
     return res
 
 class TrajectoryPublisher(object):
+    """
+    Plots trajectory of `target` frame w.r.t. `source` frame and publishes over `path` topic (nav_msgs/Path).
+    WARNING: the source and target definitions are different from TransformListener().lookupTransform(...) arguments,
+    because at least I think it's a confusing name.
+    """
+    
     def __init__(self):
         rospy.init_node('plot_trajectory')
         self._src_frame = rospy.get_param('~source', 'map')
@@ -36,9 +43,11 @@ class TrajectoryPublisher(object):
         self._reset_srv = rospy.Service('reset', Empty, self.reset)
 
     def reset(self, *args, **kwargs):
+        """ reset path cache """
         self._path.poses = []
 
     def run(self):
+        """ main loop """
         rate = rospy.Rate(50)
         while not rospy.is_shutdown():
             try:

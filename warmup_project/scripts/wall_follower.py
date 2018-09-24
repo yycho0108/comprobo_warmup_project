@@ -14,6 +14,11 @@ from warmup_project.utils import anorm, adiff
 from visualization_msgs.msg import Marker
 
 class WallFollower(object):
+    """
+    Wall Following based on PID control on distance to nearest wall.
+    TODO(@yoonyoungcho): incorporate Hough Transform based wall detection and following
+    """
+    
     def __init__(self):
         # loop rate
         self.rate_ = rospy.get_param('~rate', 50.0)
@@ -56,6 +61,7 @@ class WallFollower(object):
         pass
 
     def publish_quad(self, range, angle):
+        """ Publish four points front,back,left,right to the robot """
         msg = Marker()
         msg.lifetime = rospy.Duration(1.0)
         msg.header.frame_id = 'base_link'
@@ -85,6 +91,7 @@ class WallFollower(object):
         self.viz_pub_.publish(msg)
 
     def publish_closest(self, range, angle):
+        """ Publish the closest point detected from the LIDAR """
         msg = Marker()
         msg.lifetime = rospy.Duration(1.0)
         msg.header.frame_id = 'base_link'
@@ -144,6 +151,7 @@ class WallFollower(object):
         self.scan_ = np.asarray(msg.ranges, dtype=np.float32)
 
     def step(self, cmd_vel):
+        """ Run Single Steop """
         # keep track of elapsed time (PID)
         now = rospy.Time.now()
         dt = (now - self.now_).to_sec()
@@ -188,6 +196,7 @@ class WallFollower(object):
         cmd_vel.angular.z = w
 
     def run(self):
+        """ main loop """
         cmd_vel = Twist()
         rate = rospy.Rate(self.rate_)
         while not rospy.is_shutdown():

@@ -5,7 +5,12 @@ import rospy
 from geometry_msgs.msg import Polygon, PolygonStamped, Point32
 
 class FptViz(object):
+    """
+    Footprint Visualization Node.
+    Current footprint information is hardcoded for the neato.
+    """
     def __init__(self):
+        # TODO : non-hardcoded footprint (possibly load from .yaml files given as a rosparam)
         self.fpt_ = np.asarray([[ 0.25649121, -0.17213032],
             [ 0.17213032, -0.17468672],
             [ 0.0562406 , -0.17468672],
