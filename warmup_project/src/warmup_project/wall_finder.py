@@ -88,9 +88,10 @@ def line_from_hough(r, t, n=5):
     return p0 + u * np.linspace(-1.0, 1.0, num=n).reshape(-1,1)
 
 def main():
-    wall_finder = WallFinderHough(dr=0.05, dt=np.deg2rad(5.0))
+    wall_finder = WallFinderHough(dr=0.05, dt=np.deg2rad(1.8))
     #pts = [(1.0, 0.37), (1.0, 0.87)]
     pts = random_line(n=10)
+    pts = np.concatenate([pts, random_line(n=10)], axis=0)
     print 'line', pts
     rs,ts = hough = wall_finder(pts)
     print hough
