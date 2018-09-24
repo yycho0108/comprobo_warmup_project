@@ -37,6 +37,7 @@ class Teleop(object):
 
         # track commands
         self.key_ = None
+        self.new_key_ = False
         self.last_cmd_ = rospy.Time(0)
         self.last_pub_ = rospy.Time(0)
         self.cmd_pub_  = rospy.Publisher('cmd_vel', Twist, queue_size=1)
@@ -70,7 +71,7 @@ class Teleop(object):
             else:
                 print 'key', key
                 self.key_ = key
-                self.last_cmd_ = rospy.Time.now()
+                self.new_key_ = True
 
     def run(self):
         repeat_flag = (self.period_ > 0)
@@ -83,19 +84,22 @@ class Teleop(object):
 
                 # handle key input
                 k = self.key_
-                #k = self.get_key()
+                #k = self.get_key() - if using this way, uncomment below
+                #self.new_key_ = True
                 if k == '\x03': # SIGINT
                     break
-                if k in self.vwmap_:
-                    v, w = self.vwmap_[k]
-                    cmd_vel.linear.x  = v * self.v_scale_
-                    cmd_vel.angular.z = w * self.w_scale_
-                    #self.last_cmd_ = now
-                    #self.last_pub_ = now
-                    #self.cmd_pub_.publish(cmd_vel)
-                else:
-                    if k is not None:
-                        print 'k', k
+                if self.new_key_:
+                    if k in self.vwmap_:
+                        self.new_key_ = False
+                        v, w = self.vwmap_[k]
+                        cmd_vel.linear.x  = v * self.v_scale_
+                        cmd_vel.angular.z = w * self.w_scale_
+                        self.last_cmd_ = rospy.Time.now()
+                        self.last_pub_ = now
+                        self.cmd_pub_.publish(cmd_vel)
+                    else:
+                        if k is not None:
+                            print 'k?', k
 
                 # handle timeout
                 if (now - self.last_cmd_).to_sec() > (self.timeout_):
