@@ -6,11 +6,12 @@ import tf
 
 from std_msgs.msg import ColorRGBA
 from sensor_msgs.msg import LaserScan
-from geometry_msgs.msg import Twist, Point
+from geometry_msgs.msg import Twist, Point, Quaternion
 
 from tf_conversions import posemath as pm
 from warmup_project.pid import PID
-from warmup_project.utils import anorm, adiff
+import warmup_project.utils as U
+from warmup_project.wall_finder import WallFinderHough as WallFinder
 from visualization_msgs.msg import Marker
 
 class WallFollower(object):
@@ -40,6 +41,9 @@ class WallFollower(object):
         max_i = rospy.get_param('~max_i', 0.1)
         self.pid_ = PID(kp,ki,kd,max_u,max_i)
 
+        # wall detector
+        self.wall_finder_ = WallFinder()
+
         # data (static @ initialization)
         self.init_ = False
         self.angle_ = None
@@ -55,6 +59,7 @@ class WallFollower(object):
         self.cmd_pub_ = rospy.Publisher('cmd_vel', Twist, queue_size=5)
         self.scan_sub_ = rospy.Subscriber('stable_scan', LaserScan, self.scan_cb)
         self.viz_pub_ = rospy.Publisher('viz_pt', Marker, queue_size=2)
+        self.wall_pub_ = rospy.Publisher('wall', Marker, queue_size=2)
 
     def footprint(self):
         # TODO : build parametric footprint at all 360'
@@ -66,18 +71,18 @@ class WallFollower(object):
         msg.lifetime = rospy.Duration(1.0)
         msg.header.frame_id = 'base_link'
 
-        fwd = range[ np.argmin( np.abs(adiff(angle, 0.0 * np.pi))) ]
+        fwd = range[ np.argmin( np.abs(U.adiff(angle, 0.0 * np.pi))) ]
         fwd = Point(x=fwd)
 
-        lft = range[ np.argmin( np.abs(adiff(angle, 0.5 * np.pi))) ]
-        lidx = np.argmin( np.abs(adiff(angle, 0.5 * np.pi)))
+        lft = range[ np.argmin( np.abs(U.adiff(angle, 0.5 * np.pi))) ]
+        lidx = np.argmin( np.abs(U.adiff(angle, 0.5 * np.pi)))
         print 'lft', lft, lidx
         lft = Point(y=lft)
 
-        bwd = range[ np.argmin( np.abs(adiff(angle, 1.0 * np.pi))) ]
+        bwd = range[ np.argmin( np.abs(U.adiff(angle, 1.0 * np.pi))) ]
         bwd = Point(x=-bwd)
 
-        rgt = range[ np.argmin( np.abs(adiff(angle, -0.5 * np.pi))) ]
+        rgt = range[ np.argmin( np.abs(U.adiff(angle, -0.5 * np.pi))) ]
         rgt = Point(y=-rgt)
 
         col = ColorRGBA(1.0,1.0,1.0,1.0)
@@ -89,6 +94,39 @@ class WallFollower(object):
         msg.scale.x = msg.scale.y = msg.scale.z = 0.2
 
         self.viz_pub_.publish(msg)
+
+    def publish_wall(self, xy_valid):
+        rt = self.wall_finder_(xy_valid)
+        if rt is None:
+            return
+        r, t = rt
+
+        ## points
+        po = np.stack([r * np.cos(t), r * np.sin(t)],axis=-1).reshape(-1,1,2) # (n,1,2)
+
+        ## vectors
+        u = np.stack([np.sin(t), -np.cos(t)], axis=-1).reshape(-1,1,2)
+        ps = po + ((3.0*u) * np.reshape([-1.0, 1.0], (1,2,1)) )
+        ps = np.asarray(ps,dtype=np.float32)
+
+        col = ColorRGBA(1.0,0.0,1.0,1.0)
+
+        msg = Marker()
+        msg.lifetime = rospy.Duration(1.0)
+        msg.header.frame_id = 'base_link'
+        msg.type = msg.LINE_LIST
+        msg.action = msg.ADD
+        msg.points = []
+        msg.pose.position = Point()
+        msg.pose.orientation = Quaternion(0,0,0,1)
+
+        for (p0, p1) in ps:
+            msg.points.extend([
+                Point(x=p0[0],y=p0[1]),
+                Point(x=p1[0],y=p1[1])])
+        msg.scale.x = msg.scale.y = msg.scale.z = 0.1
+        msg.colors = [col for _ in msg.points]
+        self.wall_pub_.publish(msg)
 
     def publish_closest(self, range, angle):
         """ Publish the closest point detected from the LIDAR """
@@ -112,7 +150,7 @@ class WallFollower(object):
     @staticmethod
     def check_forward(range, angle, mask, radius, danger, thresh=2):
         """ check if something exists in front of the robot within collision range """
-        amask = np.abs(anorm(angle)) < (np.pi / 4.0)
+        amask = np.abs(U.anorm(angle)) < (np.pi / 4.0)
         dmask =  (range * np.sin(angle)) < radius # in sweep path
         dmask &= (range * np.cos(angle)) < danger # danger
         #print 'huh?', range[ (mask & amask) & dmask]
@@ -143,9 +181,9 @@ class WallFollower(object):
         #p, q = self.tfl_.lookupTransform('base_link', 'laser', rospy.Time(0))
         if not self.init_:
             self.init_ = True
-            #self.angle_ = anorm( np.linspace(msg.angle_min, msg.angle_max,
+            #self.angle_ = U.anorm( np.linspace(msg.angle_min, msg.angle_max,
             #        len(msg.ranges), endpoint=True) )
-            self.angle_ = anorm(np.linspace(0, 2*np.pi, len(msg.ranges), endpoint=True))
+            self.angle_ = U.anorm(np.linspace(0, 2*np.pi, len(msg.ranges), endpoint=True))
             self.dmin_ = msg.range_min
             self.dmax_ = msg.range_max
         self.scan_ = np.asarray(msg.ranges, dtype=np.float32)
@@ -162,6 +200,11 @@ class WallFollower(object):
             return
 
         #self.publish_quad(self.scan_, self.angle_)
+        rq = np.stack([self.scan_, self.angle_], axis=-1)
+        vmask = (self.dmin_ < self.scan_) & (self.scan_ < self.dmax_)
+        rq_valid = rq[vmask]
+        xy_valid = U.rq2xy(rq_valid)
+        self.publish_wall(xy_valid)
 
         # mask for valid data
         mask = (self.dmin_ < self.scan_) & (self.scan_ < self.dmax_)
@@ -201,7 +244,7 @@ class WallFollower(object):
         rate = rospy.Rate(self.rate_)
         while not rospy.is_shutdown():
             self.step(cmd_vel)
-            self.cmd_pub_.publish(cmd_vel)
+            #self.cmd_pub_.publish(cmd_vel)
             rate.sleep()
 
 def main():

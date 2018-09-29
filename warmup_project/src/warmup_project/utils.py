@@ -1,10 +1,18 @@
 import numpy as np
 
+def rint(x):
+    return np.round(x).astype(np.int32)
+
 def anorm(x):
     return (x+np.pi) % (2*np.pi) - np.pi
 
 def adiff(a,b):
     return anorm(a-b)
+
+def amean(x):
+    s = np.sin(x)
+    c = np.cos(x)
+    return np.arctan2(np.sum(s), np.sum(c))
 
 def rq2xy(rq):
     # (n,2) -> (n,2)
