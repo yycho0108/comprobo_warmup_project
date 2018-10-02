@@ -4,6 +4,8 @@ from utils import anorm
 import scipy.ndimage as ndi
 import utils as U
 
+from matplotlib import pyplot as plt
+
 #from skimage.feature import peak_local_max
 def _get_high_intensity_peaks(image, mask, num_peaks):
     """
@@ -27,6 +29,7 @@ def peak_local_max_wrap(image,
         threshold_rel=None,
         num_peaks=np.inf,
         ):
+    """ adapted from skimage to support theta wrap """
     
     if np.all(image == image.flat[0]):
         return np.empty((0, 2), np.int)
@@ -87,7 +90,7 @@ def rt2xy(rt, scale=50):
     y2 = (y0 - scale*(a))
     return x1,y1,x2,y2
 
-class WallFinder(object):
+class WallFider(object):
     def __init__(self):
         pass
     def __call__(self, points):
@@ -111,20 +114,44 @@ class WallFinderHough(object):
         self.pad_ = 10 # prevent wrap - TODO: base this on physical quantity parameter
         self.acc_ = np.zeros((n_r, 2*n_t), dtype=np.float32)
 
+    @staticmethod
+    def hough(x,y,h,s=None,c=None):
+        # handle trig cache
+        if s is None:
+            s=np.sin(h)
+        if c is None:
+            c=np.cos(h)
+
+        # apply hough
+        r=x*c+y*s
+        r,h=np.broadcast_arrays(r,h)
+        h=h.copy()
+
+        # deal with negative radius
+        h[r<0] += np.pi
+        h %= (2*np.pi)
+        r=np.abs(r)
+
+        return r,h
+
     def accumulate(self, points, acc):
         acc.fill(0)
         for (x,y) in points:
             if not (np.isfinite(x) and np.isfinite(y)): continue
             r = np.linalg.norm([x,y])
-            # opt1
-            ix_r = (x * self.cos_ + y * self.sin_) / (self.mx_r_ / self.n_r_)
-            ix_t = self.ix_t_.copy().astype(np.float32)
+            ix_r, ix_t = self.hough(x,y,self.theta_,s=self.sin_,c=self.cos_)
+            ix_r *= (self.n_r_/self.mx_r_)
+            ix_t *= (self.n_t_/self.mx_t_)
 
-            # deal with negative radius
-            ix_t[ix_r < 0] += (np.pi / self.dt_)
-            ix_t %= (2*self.n_t_)
-            ix_r = np.abs(ix_r) # NOTE : abs(ix_r) must come AFTER ix_t corrections
-            ix_r %= self.n_r_
+            ## opt1
+            #ix_r = (x * self.cos_ + y * self.sin_) / (self.mx_r_ / self.n_r_)
+            #ix_t = self.ix_t_.copy().astype(np.float32)
+
+            ## deal with negative radius
+            #ix_t[ix_r < 0] += (np.pi / self.dt_)
+            #ix_t %= (2*self.n_t_)
+            #ix_r = np.abs(ix_r) # NOTE : abs(ix_r) must come AFTER ix_t corrections
+            #ix_r %= self.n_r_
 
             # convert to index
             ix_r = U.rint(ix_r)
@@ -156,7 +183,7 @@ class WallFinderHough(object):
             ri, ti = peak_idx.T
             r, t = self.dr_*ri, U.anorm(self.dt_*ti)
             #print 'r', r, 't', np.rad2deg(t)
-            return np.stack([r,t], axis=-1)
+            return np.stack([r,t], axis=-1), self.acc_[ri,ti]
             #for r_,t_ in zip(r,t):
             #    print('r-t', r_, t_)
             #return r, t 
@@ -167,12 +194,13 @@ class WallFinderHough(object):
         else:
             return None
 
-    def merge(self, rt, r_thresh, t_thresh):
+    def merge(self, rt, r_thresh, t_thresh, v):
         if rt is None:
             return rt
         #print('r_thresh : {}, t_thresh : {}'.format(r_thresh, t_thresh))
 
         rt2 = []
+        v2=[]
         n = len(rt)
         src = range(n)
 
@@ -180,53 +208,103 @@ class WallFinderHough(object):
             # ref
             i0 = src.pop(0)
             r0, t0 = rt[i0]
-            rs, ts = [r0], [t0]
+            rs, ts, vs = [r0], [t0], [v[i0]]
 
             # merge
             for i1 in src:
                 r1, t1 = rt[i1]
+                v1 = v[i1]
                 if np.abs(r0-r1)<=r_thresh and np.abs(U.adiff(t0,t1))<=t_thresh:
                     src.remove(i1)
                     rs.append(r1)
                     ts.append(t1)
+                    vs.append(v1)
             # add
             rt2.append( [np.mean(rs), U.amean(ts)] )
+            v2.append(np.sum(vs))
 
-        return np.asarray(rt2)
+        return np.asarray(rt2), np.asarray(v2)
 
-    def cut(self, lines, points):
-        pass
+    def cut(self, lines, points, weights,
+            max_dr=0.05, max_dh=0.06):
+        # TODO : improve assignment logic - wrongful assignments
+        search = [2.83783878, -3.28601199]
+        pidx = np.argmin(np.linalg.norm(points - np.reshape(search,[-1,2]),axis=-1))
+        print 'pidx', pidx 
+        print '# lines : {}'.format(len(lines))
+        print 'points'
+        print points
+        # lines  = [L, 2] -- (r,t)
+        # points = [P, 2] -- (x,y)
+        nax = np.newaxis
+
+        rl, hl = lines.T
+        c, s = np.cos(hl), np.sin(hl)
+        x, y = points.T
+        #rp, hp = (x[:,nax]*c[nax,:] + y[:,nax]*s[nax,:])
+        rp, hp = self.hough(x[:,nax], y[:,nax],
+                hl[nax,:], s[nax,:], c[nax,:])
+
+        # global dr
+        dr = np.abs(rp - rl[nax,:])
+        dh = np.abs(U.adiff(hp, hl[nax,:]))
+
+        # local (true) assignment dr
+        dr_asn = np.min(dr, axis=1)
+        dh_asn = np.min(dh, axis=1)
+
+        print 'r-h', dr_asn[pidx], dh_asn[pidx]
+
+        # filter by assignment "cost"
+        sel = np.logical_and(dr_asn<max_dr, dh_asn<max_dh)
+
+        p = points[sel]
+        a = np.argmin(dr[sel] / weights[nax,:], axis=1)
+        print 'asgn', a
+
+        l = [[] for _ in lines]
+        cnt = np.zeros(lines.shape[0])
+        for p_,a_ in zip(p,a):
+            x,y=p_
+            l[a_].append(-s[a_]*x+c[a_]*y)
+            cnt[a_] += 1
+
+        sel = (cnt > 1)
+
+        l = [[np.min(e),np.max(e)] for sel_, e in zip(sel,l) if sel_]
+        l = np.asarray(l, dtype=np.float32)
+        print 'ls', l.shape
+
+        p0 = np.stack([rl*c, rl*s], axis=-1) # center point of each line
+        tvec = np.stack([-s,c], axis=-1)
+        print 'ts', tvec.shape
+
+        p_a = p0[sel] + l[:,0:1] * tvec[sel]
+        p_b = p0[sel] + l[:,1:2] * tvec[sel]
+
+        # ==> [L,2,2]
+        return np.stack([p_a, p_b], axis=1)
 
 
-    def __call__(self, points, thresh=50.0):
+    def __call__(self, points, thresh=10.0):
         self.accumulate(points, self.acc_)
+        rt, v = self.detect(thresh)
+        rt, v = self.merge(rt, 0.05, np.deg2rad(3.0), v)
+        ls = self.cut(rt, points, v)
 
-        cv2.namedWindow('acc', cv2.WINDOW_NORMAL)
-        cv2.imshow('acc', self.acc_ / np.max(self.acc_))# / np.max(wall_finder.acc_))
-        cv2.waitKey(10)
+        plt.scatter(points[:,0], points[:,1])
+        for l in ls:
+            plt.plot(l[:,0], l[:,1])
+        plt.axis('equal')
+        plt.show()
 
-        rt = self.detect(thresh)
-        #if rt is None:
-        #    return None
-
-        #rt0 = rt
-        #n0 = len(rt)
-
-        rt = self.merge(rt, 0.03, np.deg2rad(3.0))
         if rt is None:
-            return None
+            return None, None
 
-        #print rt
-        #rt1 = rt
-        #n1 = len(rt)
-        #if n0 != n1:
-        #    print 'merge'
-        #    print rt0
-        #    print rt1
         if len(rt) > 0:
             return rt.T # returned as (r,t)
         else:
-            return None
+            return None, None
 
 class WallFinderRANSAC(object):
     def __init__(self):
@@ -257,6 +335,9 @@ def line_from_hough(r, t, n=5):
     return p0 + u * np.linspace(-1.0, 1.0, num=n).reshape(-1,1)
 
 def main():
+    #np.random.seed(1245)
+    #np.random.seed(1234)
+    np.random.seed(12308)
     wall_finder = WallFinderHough(dr=0.05, dt=np.deg2rad(1.8))
     #pts = [(1.0, 0.37), (1.0, 0.87)]
     pts = random_line(n=10)
@@ -266,7 +347,7 @@ def main():
     rs, ts = hough = wall_finder(pts)
     print rs, ts
     cv2.namedWindow('acc', cv2.WINDOW_NORMAL)
-    cv2.imshow('acc', wall_finder.acc_)# / np.max(wall_finder.acc_))
+    cv2.imshow('acc', wall_finder.acc_/wall_finder.acc_.max())# / np.max(wall_finder.acc_))
     while True:
         k = cv2.waitKey(10)
         if k == 27:
