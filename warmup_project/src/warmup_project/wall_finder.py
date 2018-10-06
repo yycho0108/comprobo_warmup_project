@@ -108,6 +108,11 @@ class WallFinderHough(object):
         self.theta_ = np.linspace(0, mx_t, n_t)
         self.ix_t_ = np.arange(n_t)
 
+        # params
+        self.detect_args_ = {'dmin':10.0}
+        self.merge_args_ = {'max_dr':0.05, 'max_dh':np.deg2rad(3.0)}
+        self.cut_args_ = {'max_dr':0.1, 'max_dh':0.06, 'max_gap':0.3}
+
         # trig cache
         self.sin_ = np.sin(self.theta_)
         self.cos_ = np.cos(self.theta_)
@@ -143,16 +148,6 @@ class WallFinderHough(object):
             ix_r *= (self.n_r_/self.mx_r_)
             ix_t *= (self.n_t_/self.mx_t_)
 
-            ## opt1
-            #ix_r = (x * self.cos_ + y * self.sin_) / (self.mx_r_ / self.n_r_)
-            #ix_t = self.ix_t_.copy().astype(np.float32)
-
-            ## deal with negative radius
-            #ix_t[ix_r < 0] += (np.pi / self.dt_)
-            #ix_t %= (2*self.n_t_)
-            #ix_r = np.abs(ix_r) # NOTE : abs(ix_r) must come AFTER ix_t corrections
-            #ix_r %= self.n_r_
-
             # convert to index
             ix_r = U.rint(ix_r)
             ix_t = U.rint(ix_t)
@@ -163,21 +158,24 @@ class WallFinderHough(object):
             ix_t = ix_t[sel]
 
             try:
-                np.add.at(acc, (ix_r, ix_t), r) # TODO : weighted addition based on radius?
+                # weighted addition based on radius
+                # TODO : is this a better method?
+                np.add.at(acc, (ix_r, ix_t), r)
             except Exception as e:
                 print x
                 print y
                 raise e
 
     def detect(self, thresh, max_lines=np.inf):
-        print self.acc_.max()
-        peak_idx = peak_local_max_wrap(self.acc_, min_distance=4.0,
+        #print self.acc_.max()
+        peak_idx = peak_local_max_wrap(self.acc_,
+                min_distance=self.detect_args_['dmin'],
                 threshold_abs=thresh,
                 #threshold_rel=0.25,
                 num_peaks=max_lines
                 )
         #peak_idx = np.asarray(np.where(self.acc_ > thresh)).T
-        print peak_idx.shape
+        #print peak_idx.shape
         if len(peak_idx) > 0:
             #print 'indices', peak_idx
             ri, ti = peak_idx.T
@@ -194,10 +192,15 @@ class WallFinderHough(object):
         else:
             return None
 
-    def merge(self, rt, r_thresh, t_thresh, v):
+    def merge(self, rt, v, max_dr=None, max_dh=None):
         if rt is None:
-            return rt
-        #print('r_thresh : {}, t_thresh : {}'.format(r_thresh, t_thresh))
+            return None
+
+        # supply default arguments
+        if max_dr is None:
+            max_dr = self.merge_args_['max_dr']
+        if max_dh is None:
+            max_dh = self.merge_args_['max_dh']
 
         rt2 = []
         v2=[]
@@ -214,7 +217,7 @@ class WallFinderHough(object):
             for i1 in src:
                 r1, t1 = rt[i1]
                 v1 = v[i1]
-                if np.abs(r0-r1)<=r_thresh and np.abs(U.adiff(t0,t1))<=t_thresh:
+                if np.abs(r0-r1)<=max_dr and np.abs(U.adiff(t0,t1)) <= max_dh:
                     src.remove(i1)
                     rs.append(r1)
                     ts.append(t1)
@@ -226,14 +229,17 @@ class WallFinderHough(object):
         return np.asarray(rt2), np.asarray(v2)
 
     def cut(self, lines, points, weights,
-            max_dr=0.05, max_dh=0.06):
-        # TODO : improve assignment logic - wrongful assignments
-        search = [2.83783878, -3.28601199]
-        pidx = np.argmin(np.linalg.norm(points - np.reshape(search,[-1,2]),axis=-1))
-        print 'pidx', pidx 
-        print '# lines : {}'.format(len(lines))
-        print 'points'
-        print points
+            max_dr=0.1, max_dh=0.06, max_gap=0.3):
+        # TODO : evaluate non-exclusive + merge vs. exclusive
+        # TODO : reformat code to be actually readible and sensible
+
+        #search = [2.83783878, -3.28601199]
+        #pidx = np.argmin(np.linalg.norm(points - np.reshape(search,[-1,2]),axis=-1))
+        #print 'pidx', pidx 
+        #print '# lines : {}'.format(len(lines))
+        #print 'points'
+        #print points
+
         # lines  = [L, 2] -- (r,t)
         # points = [P, 2] -- (x,y)
         nax = np.newaxis
@@ -253,50 +259,75 @@ class WallFinderHough(object):
         dr_asn = np.min(dr, axis=1)
         dh_asn = np.min(dh, axis=1)
 
-        print 'r-h', dr_asn[pidx], dh_asn[pidx]
+        #print 'r-h', dr_asn[pidx], dh_asn[pidx]
 
         # filter by assignment "cost"
         sel = np.logical_and(dr_asn<max_dr, dh_asn<max_dh)
 
-        p = points[sel]
-        a = np.argmin(dr[sel] / weights[nax,:], axis=1)
-        print 'asgn', a
+        #p = points[sel]
+        #a = np.argmin(dr[sel] / weights[nax,:], axis=1)
+        #print 'asgn', a
 
-        l = [[] for _ in lines]
-        cnt = np.zeros(lines.shape[0])
-        for p_,a_ in zip(p,a):
-            x,y=p_
-            l[a_].append(-s[a_]*x+c[a_]*y)
-            cnt[a_] += 1
+        #l = [[] for _ in lines]
+        #cnt = np.zeros(lines.shape[0])
+        #for p_,a_ in zip(p,a):
+        #    x,y=p_
+        #    l[a_].append(-s[a_]*x+c[a_]*y)
+        #    cnt[a_] += 1
 
-        sel = (cnt > 1)
+        #sel = (cnt > 1)
 
-        l = [[np.min(e),np.max(e)] for sel_, e in zip(sel,l) if sel_]
-        l = np.asarray(l, dtype=np.float32)
-        print 'ls', l.shape
+        # non-exclusive assignment
+        segs = []
+        lp_sel = np.logical_and(dr < max_dr, dh < max_dh)
+        sel_mask = np.zeros_like(lp_sel[:,0])
 
-        p0 = np.stack([rl*c, rl*s], axis=-1) # center point of each line
-        tvec = np.stack([-s,c], axis=-1)
-        print 'ts', tvec.shape
+        # prioritize large line
+        idx = np.argsort(weights)[::-1]
 
-        p_a = p0[sel] + l[:,0:1] * tvec[sel]
-        p_b = p0[sel] + l[:,1:2] * tvec[sel]
+        for i in idx:
 
-        # ==> [L,2,2]
-        return np.stack([p_a, p_b], axis=1)
+            r_ = rl[i]
+            c_ = c[i]
+            s_ = s[i]
 
+            pmask = lp_sel[:,i]
+
+            # exclusive version
+            pmask &= (~sel_mask)
+            sel_mask |= pmask
+
+            p0 = np.asarray([r_*c_, r_*s_])
+            tv = np.asarray([-s_,c_])
+
+            cand = points[pmask] # candidate
+            x, y = cand.T
+            t = -s_*x+c_*y
+            t.sort()
+            s_idx = 1+np.where(np.diff(t) > max_gap)[0] # TODO : apply max_gap param
+            for seg in np.split(t, s_idx):
+                if len(seg) <= 1:
+                    continue
+                seglen = np.max(seg) - np.min(seg)
+                if seglen <= max_gap:
+                    continue
+                pa = p0 + tv * np.min(seg)
+                pb = p0 + tv * np.max(seg)
+                segs.append( [pa, pb] )
+        return np.asarray(segs, dtype=np.float32)
 
     def __call__(self, points, thresh=10.0):
         self.accumulate(points, self.acc_)
         rt, v = self.detect(thresh)
-        rt, v = self.merge(rt, 0.05, np.deg2rad(3.0), v)
+        rt, v = self.merge(rt, v)
         ls = self.cut(rt, points, v)
+        return ls
 
-        plt.scatter(points[:,0], points[:,1])
-        for l in ls:
-            plt.plot(l[:,0], l[:,1])
-        plt.axis('equal')
-        plt.show()
+        #plt.scatter(points[:,0], points[:,1], alpha=0.5)
+        #for l in ls:
+        #    plt.plot(l[:,0], l[:,1])
+        #plt.axis('equal')
+        #plt.show()
 
         if rt is None:
             return None, None
@@ -337,7 +368,7 @@ def line_from_hough(r, t, n=5):
 def main():
     #np.random.seed(1245)
     #np.random.seed(1234)
-    np.random.seed(12308)
+    #np.random.seed(12308)
     wall_finder = WallFinderHough(dr=0.05, dt=np.deg2rad(1.8))
     #pts = [(1.0, 0.37), (1.0, 0.87)]
     pts = random_line(n=10)
@@ -346,12 +377,12 @@ def main():
     #print 'line', pts
     rs, ts = hough = wall_finder(pts)
     print rs, ts
-    cv2.namedWindow('acc', cv2.WINDOW_NORMAL)
-    cv2.imshow('acc', wall_finder.acc_/wall_finder.acc_.max())# / np.max(wall_finder.acc_))
-    while True:
-        k = cv2.waitKey(10)
-        if k == 27:
-            break
+    #cv2.namedWindow('acc', cv2.WINDOW_NORMAL)
+    #cv2.imshow('acc', wall_finder.acc_/wall_finder.acc_.max())# / np.max(wall_finder.acc_))
+    #while True:
+    #    k = cv2.waitKey(10)
+    #    if k == 27:
+    #        break
 
 if __name__ == "__main__":
     main()

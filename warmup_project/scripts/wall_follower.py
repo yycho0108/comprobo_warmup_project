@@ -52,6 +52,7 @@ class WallFollower(object):
 
         # data (dynamic)
         self.scan_ = None
+        self.scan_t_ = None
         self.now_ = rospy.Time.now()
 
         # ros handles
@@ -96,17 +97,18 @@ class WallFollower(object):
         self.viz_pub_.publish(msg)
 
     def publish_wall(self, xy_valid):
-        rt = self.wall_finder_(xy_valid)
-        if rt is None:
+        ps = self.wall_finder_(xy_valid)
+        if ps is None:
             return
-        r, t = rt
+        rospy.loginfo_throttle(1.0, '# Walls Detected : {}'.format(len(ps)))
+        #r, t = rt
 
-        ## points
-        po = np.stack([r * np.cos(t), r * np.sin(t)],axis=-1).reshape(-1,1,2) # (n,1,2)
+        ### points
+        #po = np.stack([r * np.cos(t), r * np.sin(t)],axis=-1).reshape(-1,1,2) # (n,1,2)
 
-        ## vectors
-        u = np.stack([np.sin(t), -np.cos(t)], axis=-1).reshape(-1,1,2)
-        ps = po + ((3.0*u) * np.reshape([-1.0, 1.0], (1,2,1)) )
+        ### vectors
+        #u = np.stack([np.sin(t), -np.cos(t)], axis=-1).reshape(-1,1,2)
+        #ps = po + ((3.0*u) * np.reshape([-1.0, 1.0], (1,2,1)) )
         ps = np.asarray(ps,dtype=np.float32)
 
         col = ColorRGBA(1.0,0.0,1.0,1.0)
@@ -114,6 +116,7 @@ class WallFollower(object):
         msg = Marker()
         msg.lifetime = rospy.Duration(1.0)
         msg.header.frame_id = 'base_link'
+        msg.header.stamp = self.scan_t_#rospy.Time.now()
         msg.type = msg.LINE_LIST
         msg.action = msg.ADD
         msg.points = []
@@ -187,6 +190,7 @@ class WallFollower(object):
             self.dmin_ = msg.range_min
             self.dmax_ = msg.range_max
         self.scan_ = np.asarray(msg.ranges, dtype=np.float32)
+        self.scan_t_ = msg.header.stamp
 
     def step(self, cmd_vel):
         """ Run Single Steop """
